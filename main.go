@@ -30,27 +30,27 @@ import (
 )
 
 func main() {
-	// creates the in-cluster config
+
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		panic(err.Error())
 	}
-	// creates the clientset
+
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(err.Error())
 	}
-
-	pods, err := clientset.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
-	if err != nil {
-		panic(err.Error())
-	}
-	fmt.Printf("There are %d pods in the cluster\n", len(pods.Items))
-
+	/*
+		pods, err := clientset.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
+		if err != nil {
+			panic(err.Error())
+		}
+		fmt.Printf("There are %d pods in the cluster\n", len(pods.Items))
+	*/
 	// Examples for error handling:
 	// - Use helper functions e.g. errors.IsNotFound()
 	// - And/or cast to StatusError and use its properties like e.g. ErrStatus.Message
-	_, err = clientset.CoreV1().Pods("default").Get(context.TODO(), "example-xxxxx", metav1.GetOptions{})
+	/*_, err = clientset.CoreV1().Pods("default").Get(context.TODO(), "example-xxxxx", metav1.GetOptions{})
 	if errors.IsNotFound(err) {
 		fmt.Printf("Pod example-xxxxx not found in default namespace\n")
 	} else if statusError, isStatus := err.(*errors.StatusError); isStatus {
@@ -59,26 +59,33 @@ func main() {
 		panic(err.Error())
 	} else {
 		fmt.Printf("Found example-xxxxx pod in default namespace\n")
-	}
+	}*/
 
 	// 1 . check if exists
-	// 2 . if not update
-	// 3 .
+	// 2 . if not create
+	// 3 . update
 
-	_, err2 := clientset.NetworkingV1().NetworkPolicies("default").Get(context.TODO(), "networkpolicy-generated", metav1.GetOptions{})
+	var networkPolicy *v1.NetworkPolicy
 
-	if errors.IsNotFound(err2) {
-		//panic(err2.Error())
+	networkPolicy, err = clientset.NetworkingV1().NetworkPolicies("default").Get(context.TODO(), "netdns-policy-generated", metav1.GetOptions{})
+
+	if errors.IsNotFound(err) {
+		networkPolicy = &v1.NetworkPolicy{
+			ObjectMeta: metav1.ObjectMeta{Name: "netdns-policy-generated"}}
+	} else if err != nil {
+		panic(err.Error())
 	}
 
-	newNetworkPolicy := v1.NetworkPolicy{Spec: v1.NetworkPolicySpec{
-		Egress:      []v1.NetworkPolicyEgressRule{v1.NetworkPolicyEgressRule{To: []v1.NetworkPolicyPeer{v1.NetworkPolicyPeer{IPBlock: &v1.IPBlock{CIDR: "8.8.8.8/24"}}}}},
-		PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"role": "mysql-client"}}}}
+	networkPolicy.Spec = v1.NetworkPolicySpec{
+		Egress: []v1.NetworkPolicyEgressRule{
+			{To: []v1.NetworkPolicyPeer{
+				{IPBlock: &v1.IPBlock{CIDR: "8.8.8.8/24"}}}}},
+		PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"role": "mysql-client"}}}
 
-	s, _ := json.Marshal(newNetworkPolicy)
+	s, _ := json.Marshal(networkPolicy)
 	fmt.Println(string(s))
 
-	_, err3 := clientset.NetworkingV1().NetworkPolicies("default").Create(context.TODO(), &newNetworkPolicy, metav1.CreateOptions{})
+	_, err3 := clientset.NetworkingV1().NetworkPolicies("default").Create(context.TODO(), networkPolicy, metav1.CreateOptions{})
 
 	fmt.Println(err3)
 }

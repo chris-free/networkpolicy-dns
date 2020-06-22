@@ -21,6 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 
 	v1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -40,52 +41,48 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
-	/*
-		pods, err := clientset.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
-		if err != nil {
-			panic(err.Error())
-		}
-		fmt.Printf("There are %d pods in the cluster\n", len(pods.Items))
-	*/
-	// Examples for error handling:
-	// - Use helper functions e.g. errors.IsNotFound()
-	// - And/or cast to StatusError and use its properties like e.g. ErrStatus.Message
-	/*_, err = clientset.CoreV1().Pods("default").Get(context.TODO(), "example-xxxxx", metav1.GetOptions{})
-	if errors.IsNotFound(err) {
-		fmt.Printf("Pod example-xxxxx not found in default namespace\n")
-	} else if statusError, isStatus := err.(*errors.StatusError); isStatus {
-		fmt.Printf("Error getting pod %v\n", statusError.ErrStatus.Message)
-	} else if err != nil {
-		panic(err.Error())
-	} else {
-		fmt.Printf("Found example-xxxxx pod in default namespace\n")
-	}*/
 
 	// 1 . check if exists
 	// 2 . if not create
 	// 3 . update
 
-	var networkPolicy *v1.NetworkPolicy
+	// need: name of np, dns to check, pod selector
 
-	networkPolicy, err = clientset.NetworkingV1().NetworkPolicies("default").Get(context.TODO(), "netdns-policy-generated", metav1.GetOptions{})
+	for {
 
-	if errors.IsNotFound(err) {
-		networkPolicy = &v1.NetworkPolicy{
-			ObjectMeta: metav1.ObjectMeta{Name: "netdns-policy-generated"}}
-	} else if err != nil {
-		panic(err.Error())
+		addrs, err := net.LookupHost("chris.work")
+
+		if err != nil {
+			panic(err)
+		}
+
+		var to []v1.NetworkPolicyPeer
+		for _, addr := range addrs {
+			to = append(to, v1.NetworkPolicyPeer{IPBlock: &v1.IPBlock{CIDR: addr + "/32"}})
+		}
+
+		var networkPolicy *v1.NetworkPolicy
+
+		networkPolicy, err = clientset.NetworkingV1().NetworkPolicies("default").Get(context.TODO(), "netdns-policy-generated", metav1.GetOptions{})
+
+		if errors.IsNotFound(err) {
+			networkPolicy, err = clientset.NetworkingV1().NetworkPolicies("default").Create(context.TODO(), &v1.NetworkPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "netdns-policy-generated"}}, metav1.CreateOptions{})
+
+		} else if err != nil {
+			panic(err.Error())
+		}
+
+		networkPolicy.Spec = v1.NetworkPolicySpec{
+			Egress: []v1.NetworkPolicyEgressRule{
+				{To: to}},
+			PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"role": "mysql-client"}}}
+
+		s, _ := json.Marshal(networkPolicy)
+		fmt.Println(string(s))
+
+		clientset.NetworkingV1().NetworkPolicies("default").Update(context.TODO(), networkPolicy, metav1.UpdateOptions{})
+
+		fmt.Println(err)
 	}
-
-	networkPolicy.Spec = v1.NetworkPolicySpec{
-		Egress: []v1.NetworkPolicyEgressRule{
-			{To: []v1.NetworkPolicyPeer{
-				{IPBlock: &v1.IPBlock{CIDR: "8.8.8.8/24"}}}}},
-		PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"role": "mysql-client"}}}
-
-	s, _ := json.Marshal(networkPolicy)
-	fmt.Println(string(s))
-
-	_, err3 := clientset.NetworkingV1().NetworkPolicies("default").Create(context.TODO(), networkPolicy, metav1.CreateOptions{})
-
-	fmt.Println(err3)
 }

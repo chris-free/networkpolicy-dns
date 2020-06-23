@@ -1,20 +1,3 @@
-/*
-Copyright 2016 The Kubernetes Authors.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
-// Note: the example only works with the code within the same release/branch.
 package main
 
 import (
@@ -32,7 +15,23 @@ import (
 	"k8s.io/client-go/rest"
 )
 
+type PodSelector struct {
+	MatchLabels map[string]string `yaml:"matchLabels"`
+}
+
+type Settings struct {
+	Domain      []string    `yaml:"domain"`
+	PodSelector PodSelector `yaml:"podSelector"`
+}
+
+// todo
+// 1. check for configmap changes then reset loop
+// 2. before updating do a diff to find changes
+// 3. add timer variable
+// 4. name
+
 func main() {
+	var err error
 
 	config, err := rest.InClusterConfig()
 	if err != nil {
@@ -44,28 +43,32 @@ func main() {
 		panic(err.Error())
 	}
 
-	// 1 . check if exists
-	// 2 . if not create
-	// 3 . update
-
-	// need: name of np, dns to check, pod selector
 
 	for {
-		var domains []string
+		var settings Settings
 
-		domainsBytes, _ := ioutil.ReadFile("/configmap/domains.yml")
+		settingsBytes, err := ioutil.ReadFile("/configmap/settings.yml")
 
-		err := yaml.Unmarshal(domainsBytes, &domains)
+		if err != nil {
+			fmt.Println("Error opening settings: " + err.Error())
+			continue
+		}
 
-		fmt.Println(domains)
+		err = yaml.Unmarshal(settingsBytes, &settings)
+
+		if err != nil {
+			fmt.Println("Error unmarshalling settings: " + err.Error())
+			continue
+		}
 
 		var addrs []string
 
-		for _, domain := range domains {
+		for _, domain := range settings.Domain {
 			addr, err := net.LookupHost(domain)
 
 			if err != nil {
-				panic(err)
+				fmt.Println("Error looking up domain: " + domain + err.Error() )
+				continue
 			}
 
 			for _, addr := range addr {
@@ -86,31 +89,29 @@ func main() {
 			networkPolicy, err = clientset.NetworkingV1().NetworkPolicies("default").Create(context.TODO(), &v1.NetworkPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: "netdns-policy-generated"}}, metav1.CreateOptions{})
 
+			if err != nil {
+				fmt.Println("Error creating policy: " + err.Error())
+				continue
+			}
+			
 		} else if err != nil {
-			panic(err.Error())
+			fmt.Println("Error getting policy: " + err.Error())
+			continue
 		}
-
-		type PodSelector struct {
-			MatchLabels map[string]string `yaml:"matchLabels"`
-		}
-
-		var podSelector PodSelector
-
-		podSelectorBytes, _ := ioutil.ReadFile("/configmap/podSelector.yml")
-
-		err = yaml.Unmarshal(podSelectorBytes, &podSelector)
-
-		fmt.Println(string(podSelectorBytes))
-		fmt.Println(podSelector)
 
 		networkPolicy.Spec = v1.NetworkPolicySpec{
 			Egress: []v1.NetworkPolicyEgressRule{
 				{To: to}},
-			PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"role": "mysql-client"}}}
+			PodSelector: settings.PodSelector}}
+
 
 		// do a compare whether it needs to be updated
+		
+		_, err = clientset.NetworkingV1().NetworkPolicies("default").Update(context.TODO(), networkPolicy, metav1.UpdateOptions{})
 
-		clientset.NetworkingV1().NetworkPolicies("default").Update(context.TODO(), networkPolicy, metav1.UpdateOptions{})
+		if err != nil {
+			fmt.Println("Error updating policy:" + err.Error())
+		}
 
 		time.Sleep(1 * time.Minute)
 	}

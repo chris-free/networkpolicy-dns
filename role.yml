@@ -56,20 +56,18 @@ spec:
         configMap:
           name: netdns-settings
           items:
-            - key: podSelector.yml
-              path: podSelector.yml
-            - key: domains.yml
-              path: domains.yml
+            - key: settings.yml
+              path: settings.yml
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: netdns-settings
 data:
-  domains.yml: |
-    - "aws.com"
-    - "chris.work"
-  podSelector.yml: |
-    Asd: "asd"
-    matchLabels:
-      role: mysql-client
+  settings.yml: |
+    podSelector:
+      matchLabels:
+        role: mysql-client
+    domain:
+      - "aws.com"
+      - "chrisfreeman.uk"

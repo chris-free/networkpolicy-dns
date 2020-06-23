@@ -19,10 +19,12 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net"
+	"time"
 
+	"gopkg.in/yaml.v2"
 	v1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -49,11 +51,26 @@ func main() {
 	// need: name of np, dns to check, pod selector
 
 	for {
+		var domains []string
 
-		addrs, err := net.LookupHost("chris.work")
+		domainsBytes, _ := ioutil.ReadFile("/configmap/domains.yml")
 
-		if err != nil {
-			panic(err)
+		err := yaml.Unmarshal(domainsBytes, &domains)
+
+		fmt.Println(domains)
+
+		var addrs []string
+
+		for _, domain := range domains {
+			addr, err := net.LookupHost(domain)
+
+			if err != nil {
+				panic(err)
+			}
+
+			for _, addr := range addr {
+				addrs = append(addrs, addr)
+			}
 		}
 
 		var to []v1.NetworkPolicyPeer
@@ -73,16 +90,28 @@ func main() {
 			panic(err.Error())
 		}
 
+		type PodSelector struct {
+			MatchLabels map[string]string `yaml:"matchLabels"`
+		}
+
+		var podSelector PodSelector
+
+		podSelectorBytes, _ := ioutil.ReadFile("/configmap/podSelector.yml")
+
+		err = yaml.Unmarshal(podSelectorBytes, &podSelector)
+
+		fmt.Println(string(podSelectorBytes))
+		fmt.Println(podSelector)
+
 		networkPolicy.Spec = v1.NetworkPolicySpec{
 			Egress: []v1.NetworkPolicyEgressRule{
 				{To: to}},
 			PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"role": "mysql-client"}}}
 
-		s, _ := json.Marshal(networkPolicy)
-		fmt.Println(string(s))
+		// do a compare whether it needs to be updated
 
 		clientset.NetworkingV1().NetworkPolicies("default").Update(context.TODO(), networkPolicy, metav1.UpdateOptions{})
 
-		fmt.Println(err)
+		time.Sleep(1 * time.Minute)
 	}
 }

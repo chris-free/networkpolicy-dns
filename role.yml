@@ -4,19 +4,16 @@ metadata:
   namespace: default
   name: netdns
 rules:
-- apiGroups: ["networking.k8s.io"] # "" indicates the core API group
+- apiGroups: ["networking.k8s.io"]
   resources: ["networkpolicies"]
   verbs: ["get", "watch", "list", "update", "create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-# This role binding allows "jane" to read pods in the "default" namespace.
-# You need to already have a Role named "pod-reader" in that namespace.
 kind: RoleBinding
 metadata:
   name: netdns-pods
   namespace: default
 subjects:
-# You can specify more than one "subject"
 subjects:
 - kind: Group
   name: system:authenticated
@@ -25,8 +22,8 @@ subjects:
   name: system:unauthenticated
   apiGroup: rbac.authorization.k8s.io
 roleRef:
-  kind: Role #this must be Role or ClusterRole
-  name: netdns #pod-reader # this must match the name of the Role or ClusterRole you wish to bind to
+  kind: Role
+  name: netdns
   apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: apps/v1
@@ -48,7 +45,7 @@ spec:
         image: nginx
         volumeMounts:
         - mountPath: /configmap
-          readOnly: true
+#          readOnly: true
           name: settings
       restartPolicy: Always
       volumes:
@@ -67,7 +64,7 @@ data:
   settings.yml: |
     podSelector:
       matchLabels:
-        role: mysql-client
+        role: smysql-client
     domain:
-      - "aws.com"
+      - "aws22.com"
       - "chrisfreeman.uk"

@@ -26,7 +26,9 @@ type Settings struct {
 }
 
 // todo
-// 4. name
+// clean up run func, get list of policies check if in there, then do an if else on create/update
+// backlog?
+// name in yml
 // 5. use: https://github.com/kubernetes/apimachinery/blob/master/pkg/util/yaml/decoder.go for unmarshalling settings
 // create tests?
 // setup github actions?

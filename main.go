@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
@@ -23,13 +22,14 @@ import (
 type Settings struct {
 	Domain      []string             `json:"domain"`
 	PodSelector metav1.LabelSelector `json:"podSelector"`
+	interval    int
 }
 
 // todo
-// use log package
 // 4. name
-// get settings to share ticker/run
 // 5. use: https://github.com/kubernetes/apimachinery/blob/master/pkg/util/yaml/decoder.go for unmarshalling settings
+// create tests?
+// setup github actions?
 
 func watch(reset chan<- bool) {
 	go func() {
@@ -82,37 +82,42 @@ func main() {
 
 	watch(reset)
 
+	settings, err := readSettings()
+
+	if err != nil {
+		return
+	}
+
 	var ticker *time.Ticker
-	ticker = time.NewTicker(10 * time.Second)
+	ticker = time.NewTicker(time.Duration(settings.interval) * time.Second)
 
 	for {
 		select {
 		case <-reset:
 			ticker.Stop()
-			ticker = time.NewTicker(500 * time.Millisecond)
+			ticker = time.NewTicker(time.Duration(settings.interval) * time.Second)
 		case <-ticker.C:
-			fmt.Println("tick")
+			log.Println("tick")
 			run(clientset)
 		}
 	}
 }
 
 func readSettings() (Settings, error) {
-	var settings Settings
-	//settingsBytes, err := ioutil.ReadFile("/configmap/settings.yml")
+	settings := Settings{
+		interval: 60,
+	}
 
-	settingsBytes, err := ioutil.ReadFile("/app/settings.yml")
+	settingsBytes, err := ioutil.ReadFile("/configmap/settings.yml")
 
 	if err != nil {
-		fmt.Println("Error opening settings: " + err.Error())
-		return Settings{}, errors.New("asd")
+		return Settings{}, errors.New("Error opening settings: " + err.Error())
 	}
 
 	err = yaml.Unmarshal(settingsBytes, &settings)
 
 	if err != nil {
-		fmt.Println("Error unmarshalling settings: " + err.Error())
-		return Settings{}, errors.New("asd")
+		return Settings{}, errors.New("Error unmarshalling settings: " + err.Error())
 	}
 
 	return settings, nil
@@ -123,6 +128,7 @@ func run(clientset *kubernetes.Clientset) {
 	settings, err := readSettings()
 
 	if err != nil {
+		log.Println(err.Error())
 		return
 	}
 
@@ -132,7 +138,7 @@ func run(clientset *kubernetes.Clientset) {
 		addr, err := net.LookupHost(domain)
 
 		if err != nil {
-			fmt.Println("Error looking up domain: " + domain + err.Error())
+			log.Println("Error looking up domain: " + domain + err.Error())
 			continue
 		}
 
@@ -152,20 +158,29 @@ func run(clientset *kubernetes.Clientset) {
 
 	var networkPolicy2 *v1.NetworkPolicy
 
-	networkPolicy2, err = clientset.NetworkingV1().NetworkPolicies("default").Get(context.TODO(), "netdns-policy-generated", metav1.GetOptions{})
+	namespaceBytes, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
 
-	networkPolicy, err = clientset.NetworkingV1().NetworkPolicies("default").Get(context.TODO(), "netdns-policy-generated", metav1.GetOptions{})
+	if err != nil {
+		log.Println("Error reading namespace service account file")
+		return
+	}
+
+	namespace := string(namespaceBytes)
+
+	networkPolicy2, err = clientset.NetworkingV1().NetworkPolicies(namespace).Get(context.TODO(), "netdns-policy-generated", metav1.GetOptions{})
+
+	networkPolicy, err = clientset.NetworkingV1().NetworkPolicies(namespace).Get(context.TODO(), "netdns-policy-generated", metav1.GetOptions{})
 	if apiErrors.IsNotFound(err) {
-		networkPolicy, err = clientset.NetworkingV1().NetworkPolicies("default").Create(context.TODO(), &v1.NetworkPolicy{
+		networkPolicy, err = clientset.NetworkingV1().NetworkPolicies(namespace).Create(context.TODO(), &v1.NetworkPolicy{
 			ObjectMeta: metav1.ObjectMeta{Name: "netdns-policy-generated"}}, metav1.CreateOptions{})
 
 		if err != nil {
-			fmt.Println("Error creating policy: " + err.Error())
+			log.Println("Error creating policy: " + err.Error())
 			return
 		}
 
 	} else if err != nil {
-		fmt.Println("Error getting policy: " + err.Error())
+		log.Println("Error getting policy: " + err.Error())
 		return
 	}
 
@@ -177,20 +192,20 @@ func run(clientset *kubernetes.Clientset) {
 	update := false
 
 	if !reflect.DeepEqual(networkPolicy.Spec.Egress, networkPolicy2.Spec.Egress) {
-		fmt.Println("LOG: DNS change, updating NetworkPolicy")
+		log.Println("LOG: DNS change, updating NetworkPolicy")
 		update = true
 	}
 
 	if !reflect.DeepEqual(networkPolicy.Spec.PodSelector, networkPolicy2.Spec.PodSelector) {
-		fmt.Println("LOG: PodSelector change, updating NetworkPolicy")
+		log.Println("LOG: PodSelector change, updating NetworkPolicy")
 		update = true
 	}
 
 	if update {
-		_, err = clientset.NetworkingV1().NetworkPolicies("default").Update(context.TODO(), networkPolicy, metav1.UpdateOptions{})
+		_, err = clientset.NetworkingV1().NetworkPolicies(namespace).Update(context.TODO(), networkPolicy, metav1.UpdateOptions{})
 
 		if err != nil {
-			fmt.Println("Error updating policy:" + err.Error())
+			log.Println("Error updating policy:" + err.Error())
 		}
 	}
 }

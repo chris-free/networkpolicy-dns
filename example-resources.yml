@@ -29,7 +29,7 @@ kind: Deployment
 metadata:
   name: netdns
 spec:
-  replicas: 0
+  replicas: 1
   selector:
     matchLabels:
       app: netdns
@@ -40,7 +40,7 @@ spec:
     spec:
       containers:
       - name: proxy
-        image: nginx
+        image: chrisfy/networkpolicy-dns:0.0.2
         volumeMounts:
         - mountPath: /configmap
           readOnly: true
@@ -62,8 +62,8 @@ data:
   settings.yml: |
     podSelector:
       matchLabels:
-        role: smysql-client
+        role: mysql-client
     domain:
-      - "aws22.com"
+      - "aws.com"
       - "chrisfreeman.uk"
     interval: 60

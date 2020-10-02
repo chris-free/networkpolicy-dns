@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"io/ioutil"
 	"log"
 	"net"
@@ -10,8 +9,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/ghodss/yaml"
-	"gopkg.in/fsnotify.v1"
 	v1 "k8s.io/api/networking/v1"
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -19,46 +16,6 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-type Settings struct {
-	Domain      []string             `json:"domain"`
-	PodSelector metav1.LabelSelector `json:"podSelector"`
-	interval    int
-}
-
-func watch(reset chan<- bool) {
-	go func() {
-		watcher, err := fsnotify.NewWatcher()
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer watcher.Close()
-
-		err = watcher.Add("/app/settings.yml")
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		for {
-			select {
-			case event, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
-				log.Println("event:", event)
-				if event.Op&fsnotify.Write == fsnotify.Write {
-					log.Println("modified file:", event.Name)
-					reset <- true
-				}
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					return
-				}
-				log.Println("error:", err)
-			}
-		}
-
-	}()
-}
 func main() {
 	var err error
 
@@ -74,7 +31,7 @@ func main() {
 
 	reset := make(chan bool)
 
-	watch(reset)
+	watchSettings(reset)
 
 	settings, err := readSettings()
 
@@ -95,26 +52,6 @@ func main() {
 			run(clientset)
 		}
 	}
-}
-
-func readSettings() (Settings, error) {
-	settings := Settings{
-		interval: 60,
-	}
-
-	settingsBytes, err := ioutil.ReadFile("/configmap/settings.yml")
-
-	if err != nil {
-		return Settings{}, errors.New("Error opening settings: " + err.Error())
-	}
-
-	err = yaml.Unmarshal(settingsBytes, &settings)
-
-	if err != nil {
-		return Settings{}, errors.New("Error unmarshalling settings: " + err.Error())
-	}
-
-	return settings, nil
 }
 
 func run(clientset *kubernetes.Clientset) {

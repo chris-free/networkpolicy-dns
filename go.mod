@@ -1,4 +1,4 @@
-module c
+module netdns
 
 go 1.14
 

@@ -47,6 +47,78 @@ The default path for the configmap is "/configmap/settings.yml"
 
 Example resource manifest found in example-resources.yml
 
+```
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: netdns
+rules:
+- apiGroups: ["networking.k8s.io"]
+  resources: ["networkpolicies"]
+  verbs: ["get", "watch", "list", "update", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: netdns-pods
+subjects:
+subjects:
+- kind: Group
+  name: system:authenticated
+  apiGroup: rbac.authorization.k8s.io
+- kind: Group
+  name: system:unauthenticated
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: netdns
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netdns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: netdns
+  template:
+    metadata:
+      labels:
+        app: netdns
+    spec:
+      containers:
+      - name: proxy
+        image: chrisfy/networkpolicy-dns:0.0.2
+        volumeMounts:
+        - mountPath: /configmap
+          readOnly: true
+          name: settings
+      restartPolicy: Always
+      volumes:
+      - name: settings
+        configMap:
+          name: netdns-settings
+          items:
+            - key: settings.yml
+              path: settings.yml
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: netdns-settings
+data:
+  settings.yml: |
+    podSelector:
+      matchLabels:
+        role: mysql-client
+    domain:
+      - "aws.com"
+      - "chrisfreeman.uk"
+    interval: 60
+```
+
  
 ## TODO
 

@@ -18,11 +18,11 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-var settingsLocation *string
+var settingsPath *string
 
 func main() {
 
-	settingsLocation = flag.String("settings", "/app/settings.yml", "Settings location")
+	settingsPath = flag.String("settings", "/configmap/settings.yml", "Path to settings.yml")
 
 	flag.Parse()
 
@@ -40,7 +40,7 @@ func main() {
 
 	reset := make(chan bool)
 
-	watchSettings(reset, *settingsLocation)
+	watchSettings(reset, *settingsPath)
 
 	ticker := newTicker()
 
@@ -60,7 +60,7 @@ func main() {
 }
 
 func newTicker() (newTicker *time.Ticker) {
-	settings, err := readSettings(*settingsLocation)
+	settings, err := readSettings(*settingsPath)
 
 	if err != nil {
 		log.Fatal(err)
@@ -71,7 +71,7 @@ func newTicker() (newTicker *time.Ticker) {
 
 func run(clientset *kubernetes.Clientset) {
 
-	settings, err := readSettings(*settingsLocation)
+	settings, err := readSettings(*settingsPath)
 
 	if err != nil {
 		log.Println(err.Error())
@@ -93,16 +93,16 @@ func run(clientset *kubernetes.Clientset) {
 		}
 	}
 
-	sort.Strings(addrs)
+	sort.Strings(addrs) // Required for Deep equal check
 
 	var to []v1.NetworkPolicyPeer
 	for _, addr := range addrs {
 		to = append(to, v1.NetworkPolicyPeer{IPBlock: &v1.IPBlock{CIDR: addr + "/32"}})
 	}
 
-	var networkPolicy *v1.NetworkPolicy
+	var newPolicy *v1.NetworkPolicy
 
-	var networkPolicy2 *v1.NetworkPolicy
+	var existingPolicy *v1.NetworkPolicy
 
 	namespaceBytes, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
 
@@ -113,11 +113,12 @@ func run(clientset *kubernetes.Clientset) {
 
 	namespace := string(namespaceBytes)
 
-	networkPolicy2, err = clientset.NetworkingV1().NetworkPolicies(namespace).Get(context.TODO(), "netdns-policy-generated", metav1.GetOptions{})
+	existingPolicy, err = clientset.NetworkingV1().NetworkPolicies(namespace).Get(context.TODO(), "netdns-policy-generated", metav1.GetOptions{})
 
-	networkPolicy, err = clientset.NetworkingV1().NetworkPolicies(namespace).Get(context.TODO(), "netdns-policy-generated", metav1.GetOptions{})
+	newPolicy := existingPolicy
+
 	if apiErrors.IsNotFound(err) {
-		networkPolicy, err = clientset.NetworkingV1().NetworkPolicies(namespace).Create(context.TODO(), &v1.NetworkPolicy{
+		newPolicy, err = clientset.NetworkingV1().NetworkPolicies(namespace).Create(context.TODO(), &v1.NetworkPolicy{
 			ObjectMeta: metav1.ObjectMeta{Name: "netdns-policy-generated"}}, metav1.CreateOptions{})
 
 		if err != nil {
@@ -130,25 +131,25 @@ func run(clientset *kubernetes.Clientset) {
 		return
 	}
 
-	networkPolicy.Spec = v1.NetworkPolicySpec{
+	newPolicy.Spec = v1.NetworkPolicySpec{
 		Egress: []v1.NetworkPolicyEgressRule{
 			{To: to}},
 		PodSelector: settings.PodSelector}
 
 	update := false
 
-	if !reflect.DeepEqual(networkPolicy.Spec.Egress, networkPolicy2.Spec.Egress) {
+	if !reflect.DeepEqual(newPolicy.Spec.Egress, existingPolicy.Spec.Egress) {
 		log.Println("LOG: DNS change, updating NetworkPolicy")
 		update = true
 	}
 
-	if !reflect.DeepEqual(networkPolicy.Spec.PodSelector, networkPolicy2.Spec.PodSelector) {
+	if !reflect.DeepEqual(newPolicy.Spec.PodSelector, existingPolicy.Spec.PodSelector) {
 		log.Println("LOG: PodSelector change, updating NetworkPolicy")
 		update = true
 	}
 
 	if update {
-		_, err = clientset.NetworkingV1().NetworkPolicies(namespace).Update(context.TODO(), networkPolicy, metav1.UpdateOptions{})
+		_, err = clientset.NetworkingV1().NetworkPolicies(namespace).Update(context.TODO(), newPolicy, metav1.UpdateOptions{})
 
 		if err != nil {
 			log.Println("Error updating policy:" + err.Error())

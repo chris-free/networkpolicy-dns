@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func watchSettings(reset chan<- bool, settingsLocation string) {
+func watchSettings(reset chan<- bool, settingsPath string) {
 	go func() {
 		watcher, err := fsnotify.NewWatcher()
 		defer watcher.Close()
@@ -19,7 +19,7 @@ func watchSettings(reset chan<- bool, settingsLocation string) {
 			log.Fatal(err)
 		}
 
-		err = watcher.Add(settingsLocation)
+		err = watcher.Add(settingsPath)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -51,12 +51,12 @@ type Settings struct {
 	Interval    int                  `json:"interval"`
 }
 
-func readSettings(settingsLocation string) (Settings, error) {
+func readSettings(settingsPath string) (Settings, error) {
 	settings := Settings{
 		Interval: 300,
 	}
 
-	settingsBytes, err := ioutil.ReadFile(settingsLocation)
+	settingsBytes, err := ioutil.ReadFile(settingsPath)
 
 	if err != nil {
 		return Settings{}, errors.New("Error opening settings: " + err.Error())
@@ -71,8 +71,8 @@ func readSettings(settingsLocation string) (Settings, error) {
 	return settings, nil
 }
 
-func getInterval(settingsLocation string) int {
-	settings, err := readSettings(settingsLocation)
+func getInterval(settingsPath string) int {
+	settings, err := readSettings(settingsPath)
 
 	if err != nil {
 		log.Fatal(err)

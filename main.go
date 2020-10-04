@@ -100,10 +100,6 @@ func run(clientset *kubernetes.Clientset) {
 		to = append(to, v1.NetworkPolicyPeer{IPBlock: &v1.IPBlock{CIDR: addr + "/32"}})
 	}
 
-	var newPolicy *v1.NetworkPolicy
-
-	var existingPolicy *v1.NetworkPolicy
-
 	namespaceBytes, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
 
 	if err != nil {
@@ -113,7 +109,7 @@ func run(clientset *kubernetes.Clientset) {
 
 	namespace := string(namespaceBytes)
 
-	existingPolicy, err = clientset.NetworkingV1().NetworkPolicies(namespace).Get(context.TODO(), "netdns-policy-generated", metav1.GetOptions{})
+	existingPolicy, err := clientset.NetworkingV1().NetworkPolicies(namespace).Get(context.TODO(), "netdns-policy-generated", metav1.GetOptions{})
 
 	newPolicy := existingPolicy
 

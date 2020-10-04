@@ -40,5 +40,6 @@ Example resource manifest found in example-resources.yml
 1. clean up run func, get list of policies check if in there, then do an if else on create/update
 2. name in yml
 3. use: https://github.com/kubernetes/apimachinery/blob/master/pkg/util/yaml/decoder.go for unmarshalling settings
-4. create tests
+4. create integration tests?
 5. setup github actions to build docker images
+6. push to docker etc

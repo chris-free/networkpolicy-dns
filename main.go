@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
@@ -16,37 +18,40 @@ import (
 	"k8s.io/client-go/rest"
 )
 
+var settingsLocation *string
+
 func main() {
+
+	settingsLocation = flag.String("settings", "/app/settings.yml", "Settings location")
+
+	flag.Parse()
+
 	var err error
 
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		panic(err.Error())
+		log.Fatal(err)
 	}
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		panic(err.Error())
+		log.Fatal(err)
 	}
 
 	reset := make(chan bool)
 
-	watchSettings(reset)
+	watchSettings(reset, *settingsLocation)
 
-	settings, err := readSettings()
+	ticker := newTicker()
 
-	if err != nil {
-		return
-	}
-
-	var ticker *time.Ticker
-	ticker = time.NewTicker(time.Duration(settings.interval) * time.Second)
+	run(clientset)
 
 	for {
 		select {
 		case <-reset:
+			fmt.Println("Reset")
 			ticker.Stop()
-			ticker = time.NewTicker(time.Duration(settings.interval) * time.Second)
+			ticker = newTicker()
 		case <-ticker.C:
 			log.Println("tick")
 			run(clientset)
@@ -54,9 +59,19 @@ func main() {
 	}
 }
 
+func newTicker() (newTicker *time.Ticker) {
+	settings, err := readSettings(*settingsLocation)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return time.NewTicker(time.Duration(settings.Interval) * time.Second)
+}
+
 func run(clientset *kubernetes.Clientset) {
 
-	settings, err := readSettings()
+	settings, err := readSettings(*settingsLocation)
 
 	if err != nil {
 		log.Println(err.Error())

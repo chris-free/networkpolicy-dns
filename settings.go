@@ -10,21 +10,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-type Settings struct {
-	Domain      []string             `json:"domain"`
-	PodSelector metav1.LabelSelector `json:"podSelector"`
-	interval    int
-}
-
-func watchSettings(reset chan<- bool) {
+func watchSettings(reset chan<- bool, settingsLocation string) {
 	go func() {
 		watcher, err := fsnotify.NewWatcher()
+		defer watcher.Close()
+
 		if err != nil {
 			log.Fatal(err)
 		}
-		defer watcher.Close()
 
-		err = watcher.Add("/app/settings.yml")
+		err = watcher.Add(settingsLocation)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -33,30 +28,35 @@ func watchSettings(reset chan<- bool) {
 			select {
 			case event, ok := <-watcher.Events:
 				if !ok {
+					log.Fatal("Settings watch channel closed")
 					return
 				}
 				log.Println("event:", event)
 				if event.Op&fsnotify.Write == fsnotify.Write {
-					log.Println("modified file:", event.Name)
+					log.Println("Settings modified file:", event.Name)
 					reset <- true
 				}
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					return
-				}
-				log.Println("error:", err)
+			case err, _ := <-watcher.Errors:
+				log.Fatal("Settings watch error:", err)
+				return
 			}
 		}
 
 	}()
 }
 
-func readSettings() (Settings, error) {
+type Settings struct {
+	Domain      []string             `json:"domain"`
+	PodSelector metav1.LabelSelector `json:"podSelector"`
+	Interval    int                  `json:"interval"`
+}
+
+func readSettings(settingsLocation string) (Settings, error) {
 	settings := Settings{
-		interval: 60,
+		Interval: 300,
 	}
 
-	settingsBytes, err := ioutil.ReadFile("/configmap/settings.yml")
+	settingsBytes, err := ioutil.ReadFile(settingsLocation)
 
 	if err != nil {
 		return Settings{}, errors.New("Error opening settings: " + err.Error())
@@ -69,4 +69,14 @@ func readSettings() (Settings, error) {
 	}
 
 	return settings, nil
+}
+
+func getInterval(settingsLocation string) int {
+	settings, err := readSettings(settingsLocation)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return settings.Interval
 }

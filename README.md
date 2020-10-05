@@ -90,7 +90,7 @@ spec:
     spec:
       containers:
       - name: proxy
-        image: chrisfy/networkpolicy-dns:0.0.2
+        image: chrisfy/networkpolicy-dns:0.1
         volumeMounts:
         - mountPath: /configmap
           readOnly: true
@@ -112,7 +112,7 @@ data:
   settings.yml: |
     podSelector:
       matchLabels:
-        role: mysql-client
+        role: web-client
     domain:
       - "aws.com"
       - "chrisfreeman.uk"
